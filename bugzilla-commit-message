@@ -1,0 +1,72 @@
+#!/usr/bin/php
+<?php
+/*
+    This hook create default Bugzilla commit message
+    It take branch bug/bugnumber and search in bugzilla for bug summary
+    
+    Copy this file into ./git/hooks/prepare-commit-msg and then set as executable file.
+    
+    You can now just create branch bug/12345 and then make commit:
+    
+    git commit -m ''
+    above will set commit message to: 12345: bug summary
+    
+    git commit -m 'your comment'
+    above will set commit message to: 12345: bug summary: your comment
+    
+    git commit
+    above will call editor with default commit message 12345: bug summary
+    
+    Remember to set BUG_USER and BUG_PASS
+*/
+
+define('BUG_USER', 'username');
+define('BUG_PASS', 'password');
+define('BUG_URL', 'http://link.to.your.bugzilla/');
+
+function writeMessage($bugNumber, $oldMessage, $bugSummary = '') {
+    global $argv;
+    $message = $bugNumber;
+    if ($bugSummary) {
+        $message .= ': ' . $bugSummary;
+    }
+
+    if ($oldMessage) {
+        $message .= ': ' . $oldMessage;
+    }
+
+    file_put_contents($argv[1], $message);
+}
+
+$message = trim(file_get_contents($argv[1]));
+
+$currentBranch = trim(exec('git symbolic-ref --short HEAD'));
+
+$ar = explode('/', $currentBranch);
+
+//checking if branch name is bug/bugnumber
+if (count($ar) !== 2 || $ar[0] !== 'bug' || !is_numeric($ar[1])){
+    exit;
+}
+
+$bugNumber = $ar[1];
+
+//login into bugzilla
+$loginResponse = json_decode(file_get_contents(BUG_URL . 'rest/login?login=' . BUG_USER  . '&password=' . BUG_PASS), true);
+if (empty($loginResponse['token'])){
+    writeMessage($bugNumber, $message);
+    exit;
+}
+
+$token = $loginResponse['token'];
+
+//getting bug info from bugzilla
+$bugResponse = json_decode(file_get_contents(BUG_URL . 'rest/bug/' .$bugNumber. '?token=' . $token), true);
+if (empty($bugResponse['bugs'])){
+    writeMessage($bugNumber, $message);
+    exit;
+}
+
+//adding bug summary into commit message
+writeMessage($bugNumber, $message, $bugResponse['bugs'][0]['summary']);
+
