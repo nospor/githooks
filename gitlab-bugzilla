@@ -1,0 +1,95 @@
+#!/usr/bin/php
+<?php
+/*
+    This hook add comment in bugzilla bug when someone push branch into gitlab project.
+    Branch must be named bug/12345 where 12345 is bug number. 
+    After someone push such branch into gitlab project, hook will add comment for bug 12345 in bugzilla
+    with link to this bug in gitlab. Thanks to that you can easly follow changes in bugzilla bugs.
+    
+    Copy this file into /var/opt/gitlab/git-data/repositories/mediatel/mapping.git/custom_hooks/post-receive 
+    and then set as executable file.
+*/
+
+function getAuthor($revision) {    
+    //array with bugzilla users
+    //you can set here only one user which will be default user for all users
+    $authors = [
+        'author1' => 'password1',
+        'author2' => 'password2',
+    ];
+
+    //getting email from revision
+    $text = trim(exec("git show $revision | grep 'Author'"));
+    preg_match('/<(.*?)>/', $text, $matches);
+    $email = $matches[1];
+
+    //getting credentials for that email
+    $key = isset($authors[$email]) ? $email : key($authors);
+
+    return [
+        'email' => $email,
+        'credentials' => ['user' => $key, 'password' => $authors[$key]]
+    ];
+}
+
+define('BUG_URL', 'http://link.to.your.bugzilla/');
+define('GITLAB_URL', 'http://link.to.your.gitlab/');
+
+$stdin = fopen('php://stdin', 'r');
+$line = trim(fgets(STDIN));
+$ar = explode(' ', $line);
+if (count($ar) !== 3) {
+    exit;
+}
+
+//getting project name
+$path = exec('echo $PWD');
+$search = [
+    '/var/opt/gitlab/git-data/repositories/',
+    '.git'
+];
+$projectName = str_replace($search, '', $path);
+
+$revision = $ar[1];
+if ($revision === '0000000000000000000000000000000000000000') { //this is during removing branch after merge into master
+    exit;
+}
+
+//getting branch name
+$branchName = str_replace('refs/heads/', '', $ar[2]);
+
+$ar = explode('/', $branchName);
+
+//checking if branch name is bug/12345
+if (count($ar) !== 2 || $ar[0] !== 'bug' || !is_numeric($ar[1])){
+    exit;
+}
+$bugNumber = $ar[1];
+$author = getAuthor($revision);
+
+//login into bugzilla
+$loginResponse = json_decode(file_get_contents(BUG_URL . 'rest/login?login=' . $author['credentials']['user']  . '&password=' . $author['credentials']['password']), true);
+if (empty($loginResponse['token'])){
+    exit;
+}
+
+$token = $loginResponse['token'];
+
+$comment = "Code change by $author[email]:
+
+    Latest change
+    " . GITLAB_URL . "{$projectName}/commit/$revision";
+
+//adding comment into bugzilla bug
+$curl = curl_init();
+curl_setopt($curl, CURLOPT_URL, BUG_URL . 'rest/bug/' .$bugNumber. '/comment?token=' . $token);
+curl_setopt($curl, CURLOPT_HEADER, false);
+curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($curl, CURLOPT_POST, true );
+curl_setopt($curl, CURLOPT_POSTFIELDS, [
+    'comment' => $comment,
+    'is_private' => false,
+    'is_markdown' => false,  
+]);
+curl_exec($curl);
+curl_close($curl);

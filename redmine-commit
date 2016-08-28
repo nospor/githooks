@@ -1,0 +1,39 @@
+#!/usr/bin/php
+<?php
+/*
+    This hook create redmine hash to let redmine follow our changes
+    
+    Copy this file into ./git/hooks/prepare-commit-msg and then set as executable file.
+    
+    You can now just create branch eg feature/12345 and then make commit:
+    
+    git commit -m 'some comment'
+    above will set commit message to: some comment reds #123456 
+    and thx to that redmine can follow our changes
+*/
+
+function writeMessage($bugNumber, $oldMessage) {
+    global $argv;
+    $message = $oldMessage;
+
+    if ($bugNumber) {
+        $message .= ' refs #' . $bugNumber;
+    }
+
+    file_put_contents($argv[1], $message);
+}
+
+$message = trim(file_get_contents($argv[1]));
+
+$currentBranch = trim(exec('git symbolic-ref --short HEAD'));
+
+$ar = explode('/', $currentBranch);
+$bugNumber = end($ar);
+
+//cheking if last piece of branch name is number - this should be redmine bug/task number.
+if (!is_numeric($bugNumber)){
+    exit;
+}
+
+writeMessage($bugNumber, $message);
+
