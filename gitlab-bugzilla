@@ -6,7 +6,7 @@
     After someone push such branch into gitlab project, hook will add comment for bug 12345 in bugzilla
     with link to this bug in gitlab. Thanks to that you can easly follow changes in bugzilla bugs.
     
-    Copy this file into /var/opt/gitlab/git-data/repositories/mediatel/mapping.git/custom_hooks/post-receive 
+    Copy this file into /var/opt/gitlab/git-data/repositories/GITLAB_PROJECT.git/custom_hooks/post-receive 
     and then set as executable file.
 */
 
